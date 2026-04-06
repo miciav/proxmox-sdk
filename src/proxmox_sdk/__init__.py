@@ -7,6 +7,8 @@ Mirrors the multipass-sdk API design:
 
 from proxmox_sdk.backends.fake import FakeBackend
 from proxmox_sdk.backends.proxmoxer import ProxmoxerBackend
+from proxmox_sdk.backends.ssh import FakeSshBackend, ParamikoSshBackend
+from proxmox_sdk.routing import PortMapping, ProxmoxRoutingManager
 from proxmox_sdk.client import ProxmoxClient
 from proxmox_sdk.exceptions import (
     NodeNotFoundError,
@@ -59,4 +61,9 @@ __all__ = [
     # Backends
     "FakeBackend",
     "ProxmoxerBackend",
+    "FakeSshBackend",
+    "ParamikoSshBackend",
+    # Routing / NAT
+    "ProxmoxRoutingManager",
+    "PortMapping",
 ]
