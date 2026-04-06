@@ -153,3 +153,9 @@ def test_create_vm_cloud_init_applied_before_start() -> None:
         i for i, (m, p, _) in enumerate(fb.calls) if m == "POST" and p.endswith("/start")
     )
     assert config_idx < start_idx
+
+
+def test_cloud_init_config_importable_from_top_level() -> None:
+    from proxmox_sdk import CloudInitConfig  # noqa: PLC0415
+    cfg = CloudInitConfig(username="ubuntu")
+    assert cfg.username == "ubuntu"

@@ -23,6 +23,7 @@ from proxmox_sdk.exceptions import (
     VmStateError,
 )
 from proxmox_sdk.models import (
+    CloudInitConfig,
     CommandResult,
     NodeInfo,
     SnapshotInfo,
@@ -39,14 +40,15 @@ __all__ = [
     "ProxmoxClient",
     "ProxmoxVM",
     # Models
-    "VmInfo",
-    "VmState",
-    "VmMetrics",
+    "CloudInitConfig",
+    "CommandResult",
     "NodeInfo",
     "SnapshotInfo",
-    "TemplateInfo",
     "TaskInfo",
-    "CommandResult",
+    "TemplateInfo",
+    "VmInfo",
+    "VmMetrics",
+    "VmState",
     # Exceptions
     "ProxmoxError",
     "ProxmoxAuthError",
