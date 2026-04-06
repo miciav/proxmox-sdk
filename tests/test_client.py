@@ -1,7 +1,7 @@
 import pytest
 
 from proxmox_sdk import FakeBackend, ProxmoxClient, VmInfo, VmNotFoundError
-from proxmox_sdk.models import VmState
+from proxmox_sdk.models import CloudInitConfig, VmState
 
 
 def test_list_returns_all_vms(client: ProxmoxClient) -> None:
@@ -97,9 +97,6 @@ def test_purge_stopped(
     remaining = client.list()
     for vm in remaining:
         assert vm.state == VmState.RUNNING
-
-
-from proxmox_sdk.models import CloudInitConfig
 
 
 def test_create_vm_with_cloud_init_applies_config(

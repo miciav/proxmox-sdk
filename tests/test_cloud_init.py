@@ -143,7 +143,7 @@ def test_create_vm_cloud_init_applied_before_start() -> None:
 
     # Find the new VM id (not 9000)
     new_vm = next(v for v in fb._vms.values() if v["name"] == "new-vm")
-    vmid = new_vm["vmid"]
+    assert new_vm is not None  # confirm VM was created
 
     # Verify order: config must appear before start in calls
     config_idx = next(
