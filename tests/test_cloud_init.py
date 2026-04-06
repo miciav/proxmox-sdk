@@ -80,3 +80,55 @@ def test_fake_backend_get_config_returns_vm_dict() -> None:
     result = fb.get("nodes/pve/qemu/100/config")
     assert result["name"] == "my-vm"
     assert result["vmid"] == 100
+
+
+from proxmox_sdk import ProxmoxClient
+
+
+def test_configure_cloud_init_calls_put_config() -> None:
+    fb = FakeBackend()
+    fb.add_vm(100, node="pve", name="my-vm")
+    client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
+    vm = client.get_vm(100)
+
+    cfg = CloudInitConfig(username="ubuntu", ip_config="ip=dhcp")
+    vm.configure_cloud_init(cfg)
+
+    fb.assert_called_with("PUT", "nodes/pve/qemu/100/config")
+
+
+def test_configure_cloud_init_stores_fields() -> None:
+    fb = FakeBackend()
+    fb.add_vm(100, node="pve", name="my-vm")
+    client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
+    vm = client.get_vm(100)
+
+    cfg = CloudInitConfig(
+        username="ubuntu",
+        password="s3cr3t",
+        ssh_keys=["ssh-rsa AAAA user@host"],
+        ip_config="ip=dhcp",
+        nameserver="1.1.1.1",
+        searchdomain="home.local",
+    )
+    vm.configure_cloud_init(cfg)
+
+    stored = fb.get("nodes/pve/qemu/100/config")
+    assert stored["ciuser"] == "ubuntu"
+    assert stored["cipassword"] == "s3cr3t"
+    assert "ssh-rsa" in stored["sshkeys"]
+    assert stored["ipconfig0"] == "ip=dhcp"
+    assert stored["nameserver"] == "1.1.1.1"
+    assert stored["searchdomain"] == "home.local"
+
+
+def test_configure_cloud_init_noop_on_empty_config() -> None:
+    fb = FakeBackend()
+    fb.add_vm(100, node="pve", name="my-vm")
+    client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
+    vm = client.get_vm(100)
+
+    before_calls = len(fb.calls)
+    vm.configure_cloud_init(CloudInitConfig())
+    # Empty config must not make any API call
+    assert len(fb.calls) == before_calls

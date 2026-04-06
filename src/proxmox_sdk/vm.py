@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from proxmox_sdk.exceptions import ProxmoxTimeoutError, SnapshotNotFoundError
 from proxmox_sdk.models import (
+    CloudInitConfig,
     CommandResult,
     SnapshotInfo,
     VmInfo,
@@ -269,6 +270,29 @@ class ProxmoxVM:
             f"nodes/{self.node}/qemu/{self.vm_id}/resize",
             disk=disk,
             size=size,
+        )
+
+    def configure_cloud_init(self, config: CloudInitConfig) -> None:
+        """
+        Apply cloud-init configuration to this VM via the Proxmox config API.
+
+        Must be called while the VM is stopped (cloud-init is applied at next boot).
+        Has no effect if config carries no fields.
+
+        Example::
+
+            vm.configure_cloud_init(CloudInitConfig(
+                username="ubuntu",
+                ssh_keys=["ssh-rsa AAAA..."],
+                ip_config="ip=dhcp",
+            ))
+        """
+        params = config.to_api_params()
+        if not params:
+            return
+        self._backend.put(
+            f"nodes/{self.node}/qemu/{self.vm_id}/config",
+            **params,
         )
 
     def __repr__(self) -> str:
