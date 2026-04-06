@@ -1,5 +1,6 @@
 """Tests for CloudInitConfig model and its Proxmox API serialization."""
 
+from proxmox_sdk.backends.fake import FakeBackend
 from proxmox_sdk.models import CloudInitConfig
 
 
@@ -62,9 +63,6 @@ def test_cloud_init_static_ip_config() -> None:
     cfg = CloudInitConfig(ip_config="ip=10.0.0.5/24,gw=10.0.0.1")
     params = cfg.to_api_params()
     assert params["ipconfig0"] == "ip=10.0.0.5/24,gw=10.0.0.1"
-
-
-from proxmox_sdk.backends.fake import FakeBackend
 
 
 def test_fake_backend_stores_config_put() -> None:
