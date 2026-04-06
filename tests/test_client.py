@@ -57,6 +57,52 @@ def test_list_templates(client: ProxmoxClient) -> None:
     assert templates[0].name == "ubuntu-template"
 
 
+def test_list_templates_returns_hardware_fields(
+    fake_backend: FakeBackend,
+) -> None:
+    fake_backend.add_vm(
+        9001,
+        node="pve",
+        name="debian-template",
+        status="stopped",
+        template=True,
+        maxcpu=2,
+        maxmem=2 * 1024 * 1024 * 1024,
+    )
+    client = ProxmoxClient(host="x", user="x", node="pve", backend=fake_backend)
+    templates = client.list_templates()
+    debian_tmpl = [t for t in templates if t.name == "debian-template"][0]
+    assert debian_tmpl.cores == 2
+    assert debian_tmpl.memory_mb == 2048
+
+
+def test_find_template_by_name(
+    fake_backend: FakeBackend,
+) -> None:
+    fake_backend.add_vm(
+        9001,
+        node="pve",
+        name="custom-template",
+        status="stopped",
+        template=True,
+        maxcpu=4,
+        maxmem=4 * 1024 * 1024 * 1024,
+    )
+    client = ProxmoxClient(host="x", user="x", node="pve", backend=fake_backend)
+    t = client.find_template("custom-template")
+    assert t.vm_id == 9001
+    assert t.name == "custom-template"
+    assert t.cores == 4
+    assert t.memory_mb == 4096
+
+
+def test_find_template_raises_if_not_found(
+    client: ProxmoxClient,
+) -> None:
+    with pytest.raises(VmNotFoundError):
+        client.find_template("nonexistent-template")
+
+
 def test_create_vm_calls_clone_then_start(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:

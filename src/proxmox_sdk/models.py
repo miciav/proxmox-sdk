@@ -129,14 +129,19 @@ class TemplateInfo:
     name: str
     node: str
     description: str = ""
+    cores: int = 0
+    memory_mb: int = 0
 
     @classmethod
     def from_api(cls, data: dict) -> "TemplateInfo":
+        maxmem = data.get("maxmem") or 0
         return cls(
             vm_id=int(data.get("vmid", 0)),
             name=data.get("name", ""),
             node=data.get("node", ""),
             description=data.get("description", ""),
+            cores=int(data.get("maxcpu", data.get("cpus", 0))),
+            memory_mb=maxmem // (1024 * 1024) if maxmem else 0,
         )
 
 

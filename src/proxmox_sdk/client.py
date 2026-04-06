@@ -130,6 +130,13 @@ class ProxmoxClient:
             if v.get("template")
         ]
 
+    def find_template(self, name: str) -> TemplateInfo:
+        """Find a template by name. Raises VmNotFoundError if not found."""
+        for t in self.list_templates():
+            if t.name == name:
+                return t
+        raise VmNotFoundError(name)
+
     # ------------------------------------------------------------------
     # VM creation / cleanup
     # ------------------------------------------------------------------
