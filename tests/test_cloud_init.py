@@ -1,5 +1,6 @@
 """Tests for CloudInitConfig model and its Proxmox API serialization."""
 
+from proxmox_sdk import ProxmoxClient
 from proxmox_sdk.backends.fake import FakeBackend
 from proxmox_sdk.models import CloudInitConfig
 
@@ -80,9 +81,6 @@ def test_fake_backend_get_config_returns_vm_dict() -> None:
     result = fb.get("nodes/pve/qemu/100/config")
     assert result["name"] == "my-vm"
     assert result["vmid"] == 100
-
-
-from proxmox_sdk import ProxmoxClient
 
 
 def test_configure_cloud_init_calls_put_config() -> None:
