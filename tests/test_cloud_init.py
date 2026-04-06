@@ -62,3 +62,23 @@ def test_cloud_init_static_ip_config() -> None:
     cfg = CloudInitConfig(ip_config="ip=10.0.0.5/24,gw=10.0.0.1")
     params = cfg.to_api_params()
     assert params["ipconfig0"] == "ip=10.0.0.5/24,gw=10.0.0.1"
+
+
+from proxmox_sdk.backends.fake import FakeBackend
+
+
+def test_fake_backend_stores_config_put() -> None:
+    fb = FakeBackend()
+    fb.add_vm(100, node="pve", name="test-vm")
+    fb.put("nodes/pve/qemu/100/config", ciuser="ubuntu", ipconfig0="ip=dhcp")
+    vm = fb.get("nodes/pve/qemu/100/config")
+    assert vm["ciuser"] == "ubuntu"
+    assert vm["ipconfig0"] == "ip=dhcp"
+
+
+def test_fake_backend_get_config_returns_vm_dict() -> None:
+    fb = FakeBackend()
+    fb.add_vm(100, node="pve", name="my-vm")
+    result = fb.get("nodes/pve/qemu/100/config")
+    assert result["name"] == "my-vm"
+    assert result["vmid"] == 100

@@ -179,6 +179,19 @@ class FakeBackend:
             # Return empty result by default (no IP assigned)
             return {"result": []}
 
+        # nodes/{node}/qemu/{vmid}/config
+        if (
+            len(parts) == 5
+            and parts[0] == "nodes"
+            and parts[2] == "qemu"
+            and parts[4] == "config"
+        ):
+            vmid = int(parts[3])
+            vm = self._vms.get(vmid)
+            if vm is None:
+                raise KeyError(f"VM {vmid} not found")
+            return vm
+
         raise KeyError(f"FakeBackend: unhandled GET path: {path!r}")
 
     def _handle_post(self, path: str, data: dict[str, Any]) -> Any:
@@ -297,6 +310,18 @@ class FakeBackend:
         ):
             vmid = int(parts[3])
             self._require_vm(vmid)
+            return None
+
+        # nodes/{node}/qemu/{vmid}/config  — store cloud-init fields
+        if (
+            len(parts) == 5
+            and parts[0] == "nodes"
+            and parts[2] == "qemu"
+            and parts[4] == "config"
+        ):
+            vmid = int(parts[3])
+            self._require_vm(vmid)
+            self._vms[vmid].update(data)
             return None
 
         raise KeyError(f"FakeBackend: unhandled PUT path: {path!r}")
