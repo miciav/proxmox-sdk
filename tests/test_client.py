@@ -117,3 +117,31 @@ def test_create_vm_without_cloud_init_does_not_call_config(
     client.create_vm("plain-vm", template_id=9000, start=False)
     calls = [(m, p) for m, p, _ in fake_backend.calls]
     assert not any(p.endswith("/config") for _, p in calls)
+
+
+def test_create_vm_applies_cores_and_memory(
+    client: ProxmoxClient, fake_backend: FakeBackend
+) -> None:
+    vm = client.create_vm("hw-vm", template_id=9000, cores=4, memory_mb=4096, start=False)
+    stored = fake_backend.get(f"nodes/pve/qemu/{vm.vm_id}/config")
+    assert stored["cores"] == 4
+    assert stored["memory"] == 4096
+
+
+def test_create_vm_resizes_disk(
+    client: ProxmoxClient, fake_backend: FakeBackend
+) -> None:
+    vm = client.create_vm("disk-vm", template_id=9000, disk_gb=50, start=False)
+    fake_backend.assert_called_with("PUT", f"nodes/pve/qemu/{vm.vm_id}/resize")
+
+
+def test_create_vm_no_config_when_no_hw_params(
+    client: ProxmoxClient, fake_backend: FakeBackend
+) -> None:
+    vm = client.create_vm("plain-vm", template_id=9000, start=False)
+    # No PUT /config call should be made for hw (cloud_init is also None here)
+    hw_config_calls = [
+        (m, p) for m, p, _ in fake_backend.calls
+        if m == "PUT" and p == f"nodes/pve/qemu/{vm.vm_id}/config"
+    ]
+    assert hw_config_calls == []

@@ -140,9 +140,9 @@ class ProxmoxClient:
         template_id: int,
         node: str | None = None,
         *,
-        cores: int = 2,
-        memory_mb: int = 2048,
-        disk_gb: int = 20,
+        cores: int | None = None,
+        memory_mb: int | None = None,
+        disk_gb: int | None = None,
         cloud_init_config: CloudInitConfig | None = None,
         start: bool = True,
     ) -> ProxmoxVM:
@@ -177,6 +177,16 @@ class ProxmoxClient:
         self._backend.wait_for_task(target_node, upid)
 
         vm = ProxmoxVM(new_vmid, target_node, self._backend)
+
+        hw_params: dict[str, Any] = {}
+        if cores is not None:
+            hw_params["cores"] = cores
+        if memory_mb is not None:
+            hw_params["memory"] = memory_mb
+        if hw_params:
+            self._backend.put(f"nodes/{target_node}/qemu/{new_vmid}/config", **hw_params)
+        if disk_gb is not None:
+            vm.resize_disk("scsi0", f"{disk_gb}G")
 
         if cloud_init_config is not None:
             vm.configure_cloud_init(cloud_init_config)
