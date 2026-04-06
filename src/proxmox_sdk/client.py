@@ -5,7 +5,7 @@ from typing import Any
 from proxmox_sdk._utils import parse_proxmox_url
 from proxmox_sdk.backends.protocol import ProxmoxBackend
 from proxmox_sdk.exceptions import VmNotFoundError
-from proxmox_sdk.models import NodeInfo, TemplateInfo, VmInfo
+from proxmox_sdk.models import CloudInitConfig, NodeInfo, TemplateInfo, VmInfo
 from proxmox_sdk.vm import ProxmoxVM
 
 
@@ -143,31 +143,43 @@ class ProxmoxClient:
         cores: int = 2,
         memory_mb: int = 2048,
         disk_gb: int = 20,
-        ip_config: str | None = None,
-        cloud_init: str | None = None,
+        cloud_init_config: CloudInitConfig | None = None,
         start: bool = True,
     ) -> ProxmoxVM:
         """
-        Clone a template VM and optionally start it.
+        Clone a template VM, optionally apply cloud-init, and start it.
+
+        Cloud-init (username, password, SSH keys, IP config) is applied
+        after the clone and before the VM is started::
+
+            vm = client.create_vm(
+                "node-1",
+                template_id=9000,
+                cloud_init_config=CloudInitConfig(
+                    username="ubuntu",
+                    ssh_keys=["ssh-rsa AAAA..."],
+                    ip_config="ip=dhcp",
+                ),
+            )
 
         Returns the new ProxmoxVM instance.
         """
         target_node = node or self._default_node()
-        # Find the next available VMID
         new_vmid = self._next_vmid()
 
-        data: dict[str, Any] = {
-            "newid": new_vmid,
-            "name": name,
-            "target": target_node,
-            "full": 1,
-        }
         upid = self._backend.post(
-            f"nodes/{target_node}/qemu/{template_id}/clone", **data
+            f"nodes/{target_node}/qemu/{template_id}/clone",
+            newid=new_vmid,
+            name=name,
+            target=target_node,
+            full=1,
         )
         self._backend.wait_for_task(target_node, upid)
 
         vm = ProxmoxVM(new_vmid, target_node, self._backend)
+
+        if cloud_init_config is not None:
+            vm.configure_cloud_init(cloud_init_config)
 
         if start:
             vm.start()

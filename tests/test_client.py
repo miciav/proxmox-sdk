@@ -97,3 +97,26 @@ def test_purge_stopped(
     remaining = client.list()
     for vm in remaining:
         assert vm.state == VmState.RUNNING
+
+
+from proxmox_sdk.models import CloudInitConfig
+
+
+def test_create_vm_with_cloud_init_applies_config(
+    client: ProxmoxClient, fake_backend: FakeBackend
+) -> None:
+    cfg = CloudInitConfig(username="ubuntu", ip_config="ip=dhcp")
+    vm = client.create_vm("ci-vm", template_id=9000, cloud_init_config=cfg, start=False)
+
+    fake_backend.assert_called_with("PUT", f"nodes/pve/qemu/{vm.vm_id}/config")
+    stored = fake_backend.get(f"nodes/pve/qemu/{vm.vm_id}/config")
+    assert stored["ciuser"] == "ubuntu"
+    assert stored["ipconfig0"] == "ip=dhcp"
+
+
+def test_create_vm_without_cloud_init_does_not_call_config(
+    client: ProxmoxClient, fake_backend: FakeBackend
+) -> None:
+    client.create_vm("plain-vm", template_id=9000, start=False)
+    calls = [(m, p) for m, p, _ in fake_backend.calls]
+    assert not any(p.endswith("/config") for _, p in calls)

@@ -130,3 +130,26 @@ def test_configure_cloud_init_noop_on_empty_config() -> None:
     vm.configure_cloud_init(CloudInitConfig())
     # Empty config must not make any API call
     assert len(fb.calls) == before_calls
+
+
+def test_create_vm_cloud_init_applied_before_start() -> None:
+    """cloud-init config must be applied before VM is started."""
+    fb = FakeBackend()
+    fb.add_vm(9000, node="pve", name="template", status="stopped", template=True)
+    client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
+
+    cfg = CloudInitConfig(username="ubuntu")
+    client.create_vm("new-vm", template_id=9000, cloud_init_config=cfg, start=True)
+
+    # Find the new VM id (not 9000)
+    new_vm = next(v for v in fb._vms.values() if v["name"] == "new-vm")
+    vmid = new_vm["vmid"]
+
+    # Verify order: config must appear before start in calls
+    config_idx = next(
+        i for i, (m, p, _) in enumerate(fb.calls) if m == "PUT" and p.endswith("/config")
+    )
+    start_idx = next(
+        i for i, (m, p, _) in enumerate(fb.calls) if m == "POST" and p.endswith("/start")
+    )
+    assert config_idx < start_idx
