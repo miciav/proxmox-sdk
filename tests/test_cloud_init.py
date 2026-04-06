@@ -1,8 +1,20 @@
 """Tests for CloudInitConfig model and its Proxmox API serialization."""
 
+import pytest
+
 from proxmox_sdk import ProxmoxClient
 from proxmox_sdk.backends.fake import FakeBackend
 from proxmox_sdk.models import CloudInitConfig
+from proxmox_sdk.vm import ProxmoxVM
+
+
+@pytest.fixture()
+def vm_100() -> tuple[FakeBackend, ProxmoxVM]:
+    """FakeBackend with VM 100 pre-seeded, plus the ProxmoxVM handle."""
+    fb = FakeBackend()
+    fb.add_vm(100, node="pve", name="my-vm")
+    client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
+    return fb, client.get_vm(100)
 
 
 def test_cloud_init_to_api_params_full() -> None:
@@ -83,34 +95,26 @@ def test_fake_backend_get_config_returns_vm_dict() -> None:
     assert result["vmid"] == 100
 
 
-def test_configure_cloud_init_calls_put_config() -> None:
-    fb = FakeBackend()
-    fb.add_vm(100, node="pve", name="my-vm")
-    client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
-    vm = client.get_vm(100)
-
-    cfg = CloudInitConfig(username="ubuntu", ip_config="ip=dhcp")
-    vm.configure_cloud_init(cfg)
-
+def test_configure_cloud_init_calls_put_config(
+    vm_100: tuple[FakeBackend, ProxmoxVM],
+) -> None:
+    fb, vm = vm_100
+    vm.configure_cloud_init(CloudInitConfig(username="ubuntu", ip_config="ip=dhcp"))
     fb.assert_called_with("PUT", "nodes/pve/qemu/100/config")
 
 
-def test_configure_cloud_init_stores_fields() -> None:
-    fb = FakeBackend()
-    fb.add_vm(100, node="pve", name="my-vm")
-    client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
-    vm = client.get_vm(100)
-
-    cfg = CloudInitConfig(
+def test_configure_cloud_init_stores_fields(
+    vm_100: tuple[FakeBackend, ProxmoxVM],
+) -> None:
+    fb, vm = vm_100
+    vm.configure_cloud_init(CloudInitConfig(
         username="ubuntu",
         password="s3cr3t",
         ssh_keys=["ssh-rsa AAAA user@host"],
         ip_config="ip=dhcp",
         nameserver="1.1.1.1",
         searchdomain="home.local",
-    )
-    vm.configure_cloud_init(cfg)
-
+    ))
     stored = fb.get("nodes/pve/qemu/100/config")
     assert stored["ciuser"] == "ubuntu"
     assert stored["cipassword"] == "s3cr3t"
@@ -120,15 +124,12 @@ def test_configure_cloud_init_stores_fields() -> None:
     assert stored["searchdomain"] == "home.local"
 
 
-def test_configure_cloud_init_noop_on_empty_config() -> None:
-    fb = FakeBackend()
-    fb.add_vm(100, node="pve", name="my-vm")
-    client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
-    vm = client.get_vm(100)
-
+def test_configure_cloud_init_noop_on_empty_config(
+    vm_100: tuple[FakeBackend, ProxmoxVM],
+) -> None:
+    fb, vm = vm_100
     before_calls = len(fb.calls)
     vm.configure_cloud_init(CloudInitConfig())
-    # Empty config must not make any API call
     assert len(fb.calls) == before_calls
 
 

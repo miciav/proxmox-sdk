@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+from urllib.parse import quote
 
 
 class VmState(Enum):
@@ -203,8 +204,6 @@ class CloudInitConfig:
 
     def to_api_params(self) -> dict[str, Any]:
         """Serialize to Proxmox PUT /config keyword arguments."""
-        from urllib.parse import quote
-
         params: dict[str, Any] = {}
         if self.username:
             params["ciuser"] = self.username
