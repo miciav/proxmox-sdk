@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class VmState(Enum):
@@ -166,3 +167,55 @@ class CommandResult:
     @property
     def success(self) -> bool:
         return self.exit_code == 0
+
+
+@dataclass
+class CloudInitConfig:
+    """
+    Cloud-init configuration to apply to a VM after cloning.
+
+    Maps to the Proxmox PUT /nodes/{node}/qemu/{vmid}/config endpoint.
+    SSH keys are URL-encoded per Proxmox API requirements.
+
+    Example — DHCP with SSH key::
+
+        CloudInitConfig(
+            username="ubuntu",
+            ssh_keys=["ssh-rsa AAAA..."],
+            ip_config="ip=dhcp",
+        )
+
+    Example — static IP::
+
+        CloudInitConfig(
+            username="ubuntu",
+            ip_config="ip=10.0.0.5/24,gw=10.0.0.1",
+            nameserver="8.8.8.8",
+        )
+    """
+
+    username: str | None = None
+    password: str | None = None
+    ssh_keys: list[str] = field(default_factory=list)
+    ip_config: str | None = None
+    nameserver: str | None = None
+    searchdomain: str | None = None
+
+    def to_api_params(self) -> dict[str, Any]:
+        """Serialize to Proxmox PUT /config keyword arguments."""
+        from urllib.parse import quote
+
+        params: dict[str, Any] = {}
+        if self.username:
+            params["ciuser"] = self.username
+        if self.password:
+            params["cipassword"] = self.password
+        if self.ssh_keys:
+            params["sshkeys"] = quote("\n".join(self.ssh_keys), safe="")
+        if self.ip_config:
+            params["ipconfig0"] = self.ip_config
+        if self.nameserver:
+            params["nameserver"] = self.nameserver
+        if self.searchdomain:
+            params["searchdomain"] = self.searchdomain
+        return params
