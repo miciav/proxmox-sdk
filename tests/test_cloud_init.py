@@ -1,4 +1,4 @@
-"""Tests for CloudInitConfig and ProxmoxVM.configure_cloud_init()."""
+"""Tests for CloudInitConfig model and its Proxmox API serialization."""
 
 from proxmox_sdk.models import CloudInitConfig
 
@@ -16,7 +16,8 @@ def test_cloud_init_to_api_params_full() -> None:
     assert params["ciuser"] == "ubuntu"
     assert params["cipassword"] == "secret"
     assert "sshkeys" in params
-    assert "ssh-rsa" in params["sshkeys"]
+    assert " " not in params["sshkeys"]   # spaces must be percent-encoded
+    assert "%" in params["sshkeys"]        # encoding must have occurred
     assert params["ipconfig0"] == "ip=dhcp"
     assert params["nameserver"] == "8.8.8.8"
     assert params["searchdomain"] == "local"
@@ -38,9 +39,23 @@ def test_cloud_init_to_api_params_omits_none_fields() -> None:
 def test_cloud_init_ssh_keys_url_encoded() -> None:
     cfg = CloudInitConfig(ssh_keys=["ssh-rsa AAAA key1", "ssh-rsa BBBB key2"])
     params = cfg.to_api_params()
+    encoded = params["sshkeys"]
+    # Must not contain literal spaces or newlines (they must be percent-encoded)
+    assert " " not in encoded
+    assert "\n" not in encoded
+    # Must contain percent-encoding (spaces in "ssh-rsa AAAA" become %20)
+    assert "%" in encoded
+    # Round-trip must recover original
     from urllib.parse import unquote
-    decoded = unquote(params["sshkeys"])
+    decoded = unquote(encoded)
     assert decoded == "ssh-rsa AAAA key1\nssh-rsa BBBB key2"
+
+
+def test_cloud_init_empty_string_treated_as_absent() -> None:
+    cfg = CloudInitConfig(username="", ip_config="")
+    params = cfg.to_api_params()
+    assert "ciuser" not in params
+    assert "ipconfig0" not in params
 
 
 def test_cloud_init_static_ip_config() -> None:
