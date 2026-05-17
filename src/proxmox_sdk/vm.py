@@ -211,6 +211,33 @@ class ProxmoxVM:
             interval = min(interval * 1.5, 2.0)
         raise ProxmoxTimeoutError(self.vm_id, "exec", timeout)
 
+    def exec_structured(
+        self, argv: list[str], *, env: dict[str, str] | None = None,
+        cwd: str | None = None,
+    ) -> CommandResult:
+        """Run a command with env vars and working directory via guest agent."""
+        from shlex import quote
+
+        parts: list[str] = []
+        if cwd:
+            parts.append(f"cd {quote(cwd)}")
+        for k, v in (env or {}).items():
+            parts.append(f"export {k}={quote(v)}")
+        parts.append(" ".join(quote(a) for a in argv))
+        command = " && ".join(parts)
+        return self.exec(["bash", "-lc", command])
+
+    def transfer(self, source: str, dest: str) -> None:
+        """Transfer a file to/from the VM via SSH.
+
+        Requires NAT port forwarding (ProxmoxRoutingManager) and SSH access
+        to the VM. Not implemented via QEMU guest agent.
+        """
+        raise NotImplementedError(
+            "transfer() requires an SSH connection to the VM. "
+            "Use ProxmoxRoutingManager for NAT port forwarding first."
+        )
+
     # ------------------------------------------------------------------
     # Wait helpers
     # ------------------------------------------------------------------
