@@ -8,6 +8,7 @@ Mirrors the multipass-sdk API design:
 from proxmox_sdk._backend import (
     CommandResult,
     ParamikoSshBackend,
+    ProxmoxBackend,
     ProxmoxerBackend,
     SshBackend,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "FakeBackend",
     "FakeSshBackend",
     "ParamikoSshBackend",
+    "ProxmoxBackend",
     "ProxmoxerBackend",
     "SshBackend",
     # Routing / NAT
