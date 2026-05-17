@@ -5,9 +5,12 @@ Mirrors the multipass-sdk API design:
   https://github.com/miciav/multipass-sdk
 """
 
-from proxmox_sdk.backends.fake import FakeBackend
-from proxmox_sdk.backends.proxmoxer import ProxmoxerBackend
-from proxmox_sdk.backends.ssh import FakeSshBackend, ParamikoSshBackend
+from proxmox_sdk._backend import (
+    CommandResult,
+    ParamikoSshBackend,
+    ProxmoxerBackend,
+    SshBackend,
+)
 from proxmox_sdk.routing import PortMapping, ProxmoxRoutingManager
 from proxmox_sdk.client import ProxmoxClient
 from proxmox_sdk.exceptions import (
@@ -24,7 +27,6 @@ from proxmox_sdk.exceptions import (
 )
 from proxmox_sdk.models import (
     CloudInitConfig,
-    CommandResult,
     NodeInfo,
     SnapshotInfo,
     TaskInfo,
@@ -33,6 +35,7 @@ from proxmox_sdk.models import (
     VmMetrics,
     VmState,
 )
+from proxmox_sdk.testing import FakeBackend, FakeSshBackend
 from proxmox_sdk.vm import ProxmoxVM
 
 __all__ = [
@@ -41,7 +44,6 @@ __all__ = [
     "ProxmoxVM",
     # Models
     "CloudInitConfig",
-    "CommandResult",
     "NodeInfo",
     "SnapshotInfo",
     "TaskInfo",
@@ -61,10 +63,12 @@ __all__ = [
     "SnapshotNotFoundError",
     "TaskFailedError",
     # Backends
+    "CommandResult",
     "FakeBackend",
-    "ProxmoxerBackend",
     "FakeSshBackend",
     "ParamikoSshBackend",
+    "ProxmoxerBackend",
+    "SshBackend",
     # Routing / NAT
     "ProxmoxRoutingManager",
     "PortMapping",

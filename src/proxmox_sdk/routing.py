@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from proxmox_sdk.backends.ssh import SshBackend
+    from proxmox_sdk._backend import SshBackend
 
 # Comment tag embedded in every iptables rule we write.
 # Used to identify and remove our rules without touching others.
@@ -118,7 +118,7 @@ class ProxmoxRoutingManager:
         **kwargs: object,
     ) -> "ProxmoxRoutingManager":
         """Connect with SSH key authentication."""
-        from proxmox_sdk.backends.ssh import ParamikoSshBackend
+        from proxmox_sdk._backend import ParamikoSshBackend
 
         backend = ParamikoSshBackend(host, user, ssh_key_path=ssh_key_path, port=port)
         return cls(backend, **kwargs)  # type: ignore[arg-type]
@@ -134,7 +134,7 @@ class ProxmoxRoutingManager:
         **kwargs: object,
     ) -> "ProxmoxRoutingManager":
         """Connect with password authentication."""
-        from proxmox_sdk.backends.ssh import ParamikoSshBackend
+        from proxmox_sdk._backend import ParamikoSshBackend
 
         backend = ParamikoSshBackend(host, user, password=password, port=port)
         return cls(backend, **kwargs)  # type: ignore[arg-type]

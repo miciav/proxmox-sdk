@@ -373,3 +373,53 @@ class FakeBackend:
         upid = f"UPID:{node}:fake-{self._task_counter:04d}"
         self._tasks[upid] = "OK"
         return upid
+
+
+class FakeSshBackend:
+    """
+    In-memory SSH backend for unit testing.
+
+    Simulates a Proxmox host's filesystem and command output without
+    any real network connection.
+    """
+
+    def __init__(self) -> None:
+        # filename -> content
+        self._files: dict[str, str] = {}
+        # command prefix -> (exit_code, stdout, stderr)
+        self._responses: dict[str, tuple[int, str, str]] = {}
+        self.commands: list[str] = []
+
+    def seed_file(self, path: str, content: str) -> None:
+        """Pre-populate a file on the fake filesystem."""
+        self._files[path] = content
+
+    def seed_response(
+        self, command_prefix: str, exit_code: int, stdout: str, stderr: str = ""
+    ) -> None:
+        """Register a canned response for commands starting with command_prefix."""
+        self._responses[command_prefix] = (exit_code, stdout, stderr)
+
+    def run(self, command: str) -> tuple[int, str, str]:
+        self.commands.append(command)
+        for prefix, response in self._responses.items():
+            if command.startswith(prefix):
+                return response
+        # Default: success, no output
+        return 0, "", ""
+
+    def read_file(self, path: str) -> str:
+        return self._files.get(path, "")
+
+    def write_file(self, path: str, content: str) -> None:
+        self._files[path] = content
+
+    def assert_ran(self, substring: str) -> None:
+        """Assert that a command containing substring was executed."""
+        for cmd in self.commands:
+            if substring in cmd:
+                return
+        raise AssertionError(
+            f"Expected a command containing {substring!r}. "
+            f"Ran: {self.commands}"
+        )

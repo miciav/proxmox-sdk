@@ -165,17 +165,6 @@ class TaskInfo:
 
 
 @dataclass
-class CommandResult:
-    exit_code: int
-    stdout: str
-    stderr: str
-
-    @property
-    def success(self) -> bool:
-        return self.exit_code == 0
-
-
-@dataclass
 class CloudInitConfig:
     """
     Cloud-init configuration to apply to a VM after cloning.

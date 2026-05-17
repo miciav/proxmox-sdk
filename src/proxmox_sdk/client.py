@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, List
 
+from proxmox_sdk._backend import ProxmoxBackend
 from proxmox_sdk._utils import parse_proxmox_url
-from proxmox_sdk.backends.protocol import ProxmoxBackend
 from proxmox_sdk.exceptions import VmNotFoundError
 from proxmox_sdk.models import CloudInitConfig, NodeInfo, TemplateInfo, VmInfo
 from proxmox_sdk.vm import ProxmoxVM
@@ -22,7 +22,7 @@ class ProxmoxClient:
 
     For testing, inject a FakeBackend::
 
-        from proxmox_sdk.backends.fake import FakeBackend
+        from proxmox_sdk.testing import FakeBackend
         fake = FakeBackend()
         fake.add_vm(100, name="test-vm")
         client = ProxmoxClient(host="x", user="x", backend=fake)
@@ -268,7 +268,7 @@ class ProxmoxClient:
                 "Install it with: pip install proxmoxer requests"
             ) from exc
 
-        from proxmox_sdk.backends.proxmoxer import ProxmoxerBackend
+        from proxmox_sdk._backend import ProxmoxerBackend
 
         if token_name and token_value:
             api = ProxmoxAPI(

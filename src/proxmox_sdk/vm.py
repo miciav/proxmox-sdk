@@ -4,16 +4,16 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from proxmox_sdk.exceptions import ProxmoxTimeoutError, SnapshotNotFoundError
+from proxmox_sdk._backend import CommandResult
 from proxmox_sdk.models import (
     CloudInitConfig,
-    CommandResult,
     SnapshotInfo,
     VmInfo,
     VmMetrics,
 )
 
 if TYPE_CHECKING:
-    from proxmox_sdk.backends.protocol import ProxmoxBackend
+    from proxmox_sdk._backend import ProxmoxBackend
 
 
 class ProxmoxVM:
