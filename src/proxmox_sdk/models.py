@@ -165,6 +165,20 @@ class TaskInfo:
 
 
 @dataclass
+class VmConfig:
+    """Reusable VM launch configuration — mirrors azure-vm-sdk VmConfig."""
+
+    name: str | None = None
+    template_id: int | None = None
+    node: str | None = None
+    cores: int | None = None
+    memory_mb: int | None = None
+    disk_gb: int | None = None
+    cloud_init_config: CloudInitConfig | None = None
+    start: bool = True
+
+
+@dataclass
 class CloudInitConfig:
     """
     Cloud-init configuration to apply to a VM after cloning.
