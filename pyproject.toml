@@ -25,7 +25,7 @@ dev = [
 proxmox-quality = "proxmox_sdk.devtools.quality:main"
 proxmox-package-report = "proxmox_sdk.devtools.package_report:main"
 proxmox-eval = "proxmox_sdk.devtools.code_eval:main"
-proxmox-e2e = "proxmox_sdk.e2e:main"
+proxmox-vm-e2e = "proxmox_sdk.e2e:main"
 
 [build-system]
 requires = ["hatchling"]

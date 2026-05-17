@@ -5,11 +5,11 @@ Prerequisites:
     PROXMOX_NODE env var (or --node)
 
 Usage:
-    uv run proxmox-e2e --node pve --template-id 9000
-    uv run proxmox-e2e --name test-vm --template-id 9000 --cores 2 --memory-mb 2048
-    uv run proxmox-e2e --count 3 --template-id 9000
-    uv run proxmox-e2e --configs '[{"name":"web","template_id":9000,"cores":2}]'
-    uv run proxmox-e2e --list-templates
+    uv run proxmox-vm-e2e --node pve --template-id 9000
+    uv run proxmox-vm-e2e --name test-vm --template-id 9000 --cores 2 --memory-mb 2048
+    uv run proxmox-vm-e2e --count 3 --template-id 9000
+    uv run proxmox-vm-e2e --configs '[{"name":"web","template_id":9000,"cores":2}]'
+    uv run proxmox-vm-e2e --list-templates
 """
 
 from __future__ import annotations

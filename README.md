@@ -63,7 +63,7 @@ vms = client.list(node="pve")   # filtrate per nodo
 vm: ProxmoxVM = client.get_vm(100)
 
 # Cerca una VM per nome
-vm = client.find_vm("node-1")   # lancia VmNotFoundError se assente
+vm = client.get_vm("node-1")   # lancia VmNotFoundError se assente
 ```
 
 ### Template
@@ -85,7 +85,7 @@ t: TemplateInfo = client.find_template("ubuntu-22.04")
 ```python
 from proxmox_sdk import CloudInitConfig
 
-vm = client.create_vm(
+vm = client.launch(
     "node-1",
     template_id=9000,       # VMID del template da clonare (full clone)
     node="pve",             # nodo di destinazione (default: primo disponibile)
@@ -110,8 +110,8 @@ vm = client.create_vm(
 
 ```python
 # Elimina tutte le VM ferme (usa con cautela)
-client.purge_stopped()
-client.purge_stopped(node="pve")
+client.purge()
+client.purge(node="pve")
 ```
 
 ### Nodi
@@ -245,10 +245,63 @@ Le porte host vengono scelte automaticamente evitando quelle già in uso (rileva
 
 ---
 
+## End-to-End Test — `proxmox-vm-e2e`
+
+Programma CLI per testare il ciclo di vita completo di una VM: creazione, verifica (guest agent, IP, esecuzione comando), eliminazione. Equivalente a `azure-vm-e2e`.
+
+```bash
+# Singola VM
+PROXMOX_HOST=192.168.1.100 PROXMOX_USER=root@pam \
+PROXMOX_PASSWORD=secret PROXMOX_NODE=pve \
+  uv run proxmox-vm-e2e --name test-vm --template-id 9000 --cores 2 --memory-mb 2048
+
+# 3 VM in parallelo
+  uv run proxmox-vm-e2e --count 3 --template-id 9000
+
+# Con JSON array per configurazioni eterogenee
+  uv run proxmox-vm-e2e --configs '[{"name":"web","template_id":9000,"cores":2},{"name":"db","template_id":9000,"cores":4}]'
+
+# Elenca i template disponibili
+  uv run proxmox-vm-e2e --list-templates
+```
+
+### Variabili d'ambiente
+
+| Variabile | Obbligatoria | Descrizione |
+|---|---|---|
+| `PROXMOX_HOST` | sì | IP o hostname del server Proxmox |
+| `PROXMOX_USER` | sì | Utente (es. `root@pam`) |
+| `PROXMOX_PASSWORD` | no | Password (in alternativa al token) |
+| `PROXMOX_TOKEN_NAME` | no | Nome del token API |
+| `PROXMOX_TOKEN_VALUE` | no | Valore del token API |
+| `PROXMOX_NODE` | no | Nodo di default (o `--node`) |
+
+### Output di esempio
+
+```
+[1/3] Launching VM 'test-vm' ...
+       launch completed in 12.3s
+[2/3] Verifying 1 VM(s) ...
+  [1/1] 104: waiting for guest agent ...
+  [1/1] 104: agent ready in 8.2s
+  [1/1] 104: waiting for IP ...
+  [1/1] 104: got IP 10.0.0.105 in 2.1s
+  [1/1] 104: running verification command ...
+  [1/1] 104: exit=0  stdout=test-vm
+  [1/1] 104: state=running  node=pve  cores=2  mem=2048MB
+[3/3] Deleting VM '104' ...
+       done.
+
+SUCCESS — 1 VM(s) completed full lifecycle.
+```
+
+---
+
 ## Modelli dati
 
 | Classe | Campi principali |
 |---|---|
+| `VmConfig` | `name`, `template_id`, `node`, `cores`, `memory_mb`, `disk_gb`, `cloud_init_config`, `start` |
 | `VmInfo` | `vm_id`, `name`, `node`, `state` (VmState), `cpu_count`, `memory_mb`, `uptime_seconds`, `tags`, `template` |
 | `VmMetrics` | `vm_id`, `cpu_pct`, `mem_used_bytes`, `mem_total_bytes`, `net_in_bytes`, `net_out_bytes` |
 | `VmState` | enum: `RUNNING`, `STOPPED`, `PAUSED`, `SUSPENDED`, `UNKNOWN` |
@@ -256,7 +309,7 @@ Le porte host vengono scelte automaticamente evitando quelle già in uso (rileva
 | `NodeInfo` | `name`, `status`, `cpu_count`, `memory_total_bytes`, `memory_used_bytes`, `uptime_seconds` |
 | `SnapshotInfo` | `name`, `vm_id`, `created`, `description`, `parent` |
 | `CloudInitConfig` | `username`, `password`, `ssh_keys`, `ip_config`, `nameserver`, `searchdomain` |
-| `CommandResult` | `exit_code`, `stdout`, `stderr`, `success` |
+| `CommandResult` | `exit_code`, `stdout`, `stderr`, `args`, `success` |
 | `PortMapping` | `vm_id`, `vm_name`, `vm_ip`, `vm_port`, `host_port`, `service` |
 
 ---
@@ -293,7 +346,7 @@ fb.add_vm(100,  node="pve", name="node-1", status="running")
 client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
 
 # Usa il client normalmente nei test
-vm = client.create_vm("test-vm", template_id=9000, cores=2, start=False)
+vm = client.launch("test-vm", template_id=9000, cores=2, start=False)
 assert vm.vm_id is not None
 
 # Ispezione diretta dello stato interno
