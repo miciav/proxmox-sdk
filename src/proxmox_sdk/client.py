@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, List
 
 from proxmox_sdk._backend import ProxmoxBackend
 from proxmox_sdk._utils import parse_proxmox_url
 from proxmox_sdk.exceptions import VmNotFoundError
-from proxmox_sdk.models import CloudInitConfig, NodeInfo, TemplateInfo, VmInfo
+from proxmox_sdk.models import CloudInitConfig, NodeInfo, TemplateInfo, VmConfig, VmInfo
 from proxmox_sdk.vm import ProxmoxVM
 
 
 class ProxmoxClient:
-    """
-    Entry point for the proxmox-sdk.
+    """Entry point for the proxmox-sdk.
 
     Usage::
 
@@ -48,13 +49,9 @@ class ProxmoxClient:
             self._backend = backend
         else:
             self._backend = self._build_backend(
-                host=host,
-                user=user,
-                password=password,
-                token_name=token_name,
-                token_value=token_value,
-                port=port,
-                verify_ssl=verify_ssl,
+                host=host, user=user, password=password,
+                token_name=token_name, token_value=token_value,
+                port=port, verify_ssl=verify_ssl,
             )
 
     @classmethod
@@ -69,47 +66,179 @@ class ProxmoxClient:
         verify_ssl: bool = False,
         node: str | None = None,
     ) -> "ProxmoxClient":
-        """
-        Construct from a full Proxmox API URL.
-
-        Mirrors the URL parsing logic from connect_proxmox() in the deployer::
-
-            client = ProxmoxClient.from_url(
-                "https://192.168.1.100:8006/api2/json",
-                user="root@pam",
-                password="secret",
-            )
-        """
         host, port = parse_proxmox_url(api_url)
         return cls(
-            host=host,
-            user=user,
-            password=password,
-            token_name=token_name,
-            token_value=token_value,
-            port=port,
-            verify_ssl=verify_ssl,
-            node=node,
+            host=host, user=user, password=password,
+            token_name=token_name, token_value=token_value,
+            port=port, verify_ssl=verify_ssl, node=node,
         )
 
     # ------------------------------------------------------------------
-    # VM queries
+    # get_vm
     # ------------------------------------------------------------------
 
-    def get_vm(self, vm_id: int | str) -> ProxmoxVM:
-        """Return a ProxmoxVM by numeric ID. Raises VmNotFoundError if missing."""
-        vmid = int(vm_id)
+    def get_vm(self, identifier: int | str) -> ProxmoxVM:
+        """Return a ProxmoxVM by numeric ID or name. Raises VmNotFoundError if missing."""
+        if isinstance(identifier, int) or identifier.isdigit():
+            return self._get_vm_by_id(int(identifier))
+        return self._get_vm_by_name(identifier)
+
+    def _get_vm_by_id(self, vmid: int) -> ProxmoxVM:
         node = self._node_for_vm(vmid)
         return ProxmoxVM(vmid, node, self._backend)
 
-    def find_vm(self, name: str) -> ProxmoxVM:
-        """Return a ProxmoxVM by name. Raises VmNotFoundError if not found."""
+    def _get_vm_by_name(self, name: str) -> ProxmoxVM:
         for vm in self._all_vms():
             if vm.get("name") == name:
-                return ProxmoxVM(
-                    int(vm["vmid"]), vm["node"], self._backend
-                )
+                return ProxmoxVM(int(vm["vmid"]), vm["node"], self._backend)
         raise VmNotFoundError(name)
+
+    # ------------------------------------------------------------------
+    # launch
+    # ------------------------------------------------------------------
+
+    def launch(
+        self,
+        name_or_config: str | VmConfig | None = None,
+        template_id: int | None = None,
+        node: str | None = None,
+        *,
+        cores: int | None = None,
+        memory_mb: int | None = None,
+        disk_gb: int | None = None,
+        cloud_init_config: CloudInitConfig | None = None,
+        start: bool = True,
+    ) -> ProxmoxVM:
+        """Clone a template VM, optionally apply cloud-init, and start it.
+
+        Accepts either a VmConfig object or keyword arguments::
+
+            vm = client.launch("node-1", template_id=9000, cores=4, memory_mb=4096)
+
+            vm = client.launch(VmConfig(name="node-1", template_id=9000, cores=4))
+
+        Returns the new ProxmoxVM instance.
+        """
+        if isinstance(name_or_config, VmConfig):
+            cfg = name_or_config
+        else:
+            cfg = VmConfig(
+                name=name_or_config or uuid.uuid4().hex[:8],
+                template_id=template_id,
+                node=node,
+                cores=cores,
+                memory_mb=memory_mb,
+                disk_gb=disk_gb,
+                cloud_init_config=cloud_init_config,
+                start=start,
+            )
+
+        name = cfg.name or uuid.uuid4().hex[:8]
+        tid = cfg.template_id or 0
+        target_node = cfg.node or node or self._default_node()
+        new_vmid = self._next_vmid()
+
+        upid = self._backend.post(
+            f"nodes/{target_node}/qemu/{tid}/clone",
+            newid=new_vmid, name=name, target=target_node, full=1,
+        )
+        self._backend.wait_for_task(target_node, upid)
+
+        vm = ProxmoxVM(new_vmid, target_node, self._backend)
+
+        hw_params: dict[str, Any] = {}
+        if cfg.cores is not None:
+            hw_params["cores"] = cfg.cores
+        if cfg.memory_mb is not None:
+            hw_params["memory"] = cfg.memory_mb
+        if hw_params:
+            self._backend.put(f"nodes/{target_node}/qemu/{new_vmid}/config", **hw_params)
+        if cfg.disk_gb is not None:
+            vm.resize_disk("scsi0", f"{cfg.disk_gb}G")
+
+        if cfg.cloud_init_config is not None:
+            vm.configure_cloud_init(cfg.cloud_init_config)
+
+        if cfg.start:
+            vm.start()
+
+        return vm
+
+    # ------------------------------------------------------------------
+    # launch_many
+    # ------------------------------------------------------------------
+
+    def launch_many(
+        self, configs: list[VmConfig], *, max_workers: int | None = None,
+    ) -> list[ProxmoxVM]:
+        """Launch multiple VMs in parallel. Rolls back all on any failure."""
+        if not configs:
+            return []
+
+        workers = max_workers if max_workers is not None else len(configs)
+        created: list[ProxmoxVM] = []
+        first_error: BaseException | None = None
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {}
+            for cfg in configs:
+                futures[executor.submit(self.launch, cfg)] = cfg
+
+            for fut in as_completed(futures):
+                if first_error is not None:
+                    continue
+                exc = fut.exception()
+                if exc is not None:
+                    first_error = exc
+                    for pending in futures:
+                        pending.cancel()
+                else:
+                    created.append(fut.result())
+
+        if first_error is not None:
+            with ThreadPoolExecutor(max_workers=max(len(created), 1)) as rollback:
+                for rf in [rollback.submit(vm.delete) for vm in created]:
+                    try:
+                        rf.result()
+                    except Exception:
+                        pass
+            raise first_error
+
+        return created
+
+    # ------------------------------------------------------------------
+    # ensure_running
+    # ------------------------------------------------------------------
+
+    def ensure_running(
+        self,
+        name: str,
+        template_id: int,
+        *,
+        node: str | None = None,
+        cores: int | None = None,
+        memory_mb: int | None = None,
+        disk_gb: int | None = None,
+        cloud_init_config: CloudInitConfig | None = None,
+    ) -> ProxmoxVM:
+        """Ensure a VM exists and is running. Creates it if missing, starts if stopped."""
+        try:
+            vm = self.get_vm(name)
+            info = vm.info()
+            if info.state.value == "running":
+                return vm
+            vm.start()
+            return vm
+        except VmNotFoundError:
+            return self.launch(
+                name, template_id, node=node, cores=cores,
+                memory_mb=memory_mb, disk_gb=disk_gb,
+                cloud_init_config=cloud_init_config, start=True,
+            )
+
+    # ------------------------------------------------------------------
+    # list / nodes / templates
+    # ------------------------------------------------------------------
 
     def list(self, node: str | None = None) -> List[VmInfo]:
         """Return all VMs (optionally filtered to a node)."""
@@ -124,11 +253,7 @@ class ProxmoxClient:
     def list_templates(self, node: str | None = None) -> List[TemplateInfo]:
         """Return VMs flagged as templates."""
         vms = self._all_vms(node=node)
-        return [
-            TemplateInfo.from_api(v)
-            for v in vms
-            if v.get("template")
-        ]
+        return [TemplateInfo.from_api(v) for v in vms if v.get("template")]
 
     def find_template(self, name: str) -> TemplateInfo:
         """Find a template by name. Raises VmNotFoundError if not found."""
@@ -138,77 +263,14 @@ class ProxmoxClient:
         raise VmNotFoundError(name)
 
     # ------------------------------------------------------------------
-    # VM creation / cleanup
+    # purge
     # ------------------------------------------------------------------
 
-    def create_vm(
-        self,
-        name: str,
-        template_id: int,
-        node: str | None = None,
-        *,
-        cores: int | None = None,
-        memory_mb: int | None = None,
-        disk_gb: int | None = None,
-        cloud_init_config: CloudInitConfig | None = None,
-        start: bool = True,
-    ) -> ProxmoxVM:
-        """
-        Clone a template VM, optionally apply cloud-init, and start it.
-
-        Cloud-init (username, password, SSH keys, IP config) is applied
-        after the clone and before the VM is started::
-
-            vm = client.create_vm(
-                "node-1",
-                template_id=9000,
-                cloud_init_config=CloudInitConfig(
-                    username="ubuntu",
-                    ssh_keys=["ssh-rsa AAAA..."],
-                    ip_config="ip=dhcp",
-                ),
-            )
-
-        Returns the new ProxmoxVM instance.
-        """
-        target_node = node or self._default_node()
-        new_vmid = self._next_vmid()
-
-        upid = self._backend.post(
-            f"nodes/{target_node}/qemu/{template_id}/clone",
-            newid=new_vmid,
-            name=name,
-            target=target_node,
-            full=1,
-        )
-        self._backend.wait_for_task(target_node, upid)
-
-        vm = ProxmoxVM(new_vmid, target_node, self._backend)
-
-        hw_params: dict[str, Any] = {}
-        if cores is not None:
-            hw_params["cores"] = cores
-        if memory_mb is not None:
-            hw_params["memory"] = memory_mb
-        if hw_params:
-            self._backend.put(f"nodes/{target_node}/qemu/{new_vmid}/config", **hw_params)
-        if disk_gb is not None:
-            vm.resize_disk("scsi0", f"{disk_gb}G")
-
-        if cloud_init_config is not None:
-            vm.configure_cloud_init(cloud_init_config)
-
-        if start:
-            vm.start()
-
-        return vm
-
-    def purge_stopped(self, node: str | None = None) -> None:
-        """Delete all stopped VMs (use with care)."""
+    def purge(self, node: str | None = None) -> None:
+        """Delete all VMs (use with care)."""
         for vm_info in self.list(node=node):
-            if vm_info.state.value == "stopped":
-                pvm = ProxmoxVM(vm_info.vm_id, vm_info.node, self._backend)
-                pvm.delete(purge=True)
+            pvm = ProxmoxVM(vm_info.vm_id, vm_info.node, self._backend)
+            pvm.delete(purge=True)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -223,7 +285,6 @@ class ProxmoxClient:
         return list(resources)
 
     def _node_for_vm(self, vmid: int) -> str:
-        """Find which node a VM is on. Raises VmNotFoundError if absent."""
         resources = self._backend.get("cluster/resources", type="vm")
         for entry in resources:
             if int(entry.get("vmid", -1)) == vmid:
@@ -239,7 +300,6 @@ class ProxmoxClient:
         raise RuntimeError("No nodes available in the cluster")
 
     def _next_vmid(self) -> int:
-        """Return the next available VMID (simple heuristic)."""
         try:
             result = self._backend.get("cluster/nextid")
             return int(result)
@@ -252,13 +312,9 @@ class ProxmoxClient:
 
     @staticmethod
     def _build_backend(
-        host: str,
-        user: str,
-        password: str | None,
-        token_name: str | None,
-        token_value: str | None,
-        port: int,
-        verify_ssl: bool,
+        host: str, user: str, password: str | None,
+        token_name: str | None, token_value: str | None,
+        port: int, verify_ssl: bool,
     ) -> ProxmoxBackend:
         try:
             from proxmoxer import ProxmoxAPI
@@ -267,27 +323,18 @@ class ProxmoxClient:
                 "proxmoxer is required for the real backend. "
                 "Install it with: pip install proxmoxer requests"
             ) from exc
-
         from proxmox_sdk._backend import ProxmoxerBackend
 
         if token_name and token_value:
             api = ProxmoxAPI(
-                host,
-                user=user,
-                token_name=token_name,
-                token_value=token_value,
-                verify_ssl=verify_ssl,
-                port=port,
+                host, user=user, token_name=token_name,
+                token_value=token_value, verify_ssl=verify_ssl, port=port,
             )
         else:
             api = ProxmoxAPI(
-                host,
-                user=user,
-                password=password or "",
-                verify_ssl=verify_ssl,
-                port=port,
+                host, user=user, password=password or "",
+                verify_ssl=verify_ssl, port=port,
             )
-
         return ProxmoxerBackend(api)
 
     def __repr__(self) -> str:
