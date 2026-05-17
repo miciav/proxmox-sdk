@@ -45,12 +45,12 @@ class ParamikoSshBackend:
         except ImportError as exc:
             raise ImportError(
                 "paramiko is required for SSH operations. "
-                "Install it with: pip install proxmox-sdk[ssh]"
+                "Install it with: pip install paramiko"
             ) from exc
 
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        connect_kwargs: dict = {
+        connect_kwargs: dict[str, object] = {
             "hostname": host,
             "username": user,
             "port": port,
@@ -69,7 +69,7 @@ class ParamikoSshBackend:
     def read_file(self, path: str) -> str:
         _, stdout, _ = self._client.exec_command(f"cat {path}")
         stdout.channel.recv_exit_status()
-        return stdout.read().decode()
+        return str(stdout.read().decode())
 
     def write_file(self, path: str, content: str) -> None:
         # Write atomically via a tmp file

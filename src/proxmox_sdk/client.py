@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, List
 
 from proxmox_sdk._utils import parse_proxmox_url
 from proxmox_sdk.backends.protocol import ProxmoxBackend
@@ -111,17 +111,17 @@ class ProxmoxClient:
                 )
         raise VmNotFoundError(name)
 
-    def list(self, node: str | None = None) -> list[VmInfo]:
+    def list(self, node: str | None = None) -> List[VmInfo]:
         """Return all VMs (optionally filtered to a node)."""
         vms = self._all_vms(node=node)
         return [VmInfo.from_api(v) for v in vms]
 
-    def list_nodes(self) -> list[NodeInfo]:
+    def list_nodes(self) -> List[NodeInfo]:
         """Return all nodes in the cluster."""
         raw = self._backend.get("nodes")
         return [NodeInfo.from_api(n) for n in raw]
 
-    def list_templates(self, node: str | None = None) -> list[TemplateInfo]:
+    def list_templates(self, node: str | None = None) -> List[TemplateInfo]:
         """Return VMs flagged as templates."""
         vms = self._all_vms(node=node)
         return [
@@ -214,7 +214,7 @@ class ProxmoxClient:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _all_vms(self, node: str | None = None) -> list[dict[str, Any]]:
+    def _all_vms(self, node: str | None = None) -> List[dict[str, Any]]:
         resources = self._backend.get("cluster/resources", type="vm")
         if node:
             return [r for r in resources if r.get("node") == node]

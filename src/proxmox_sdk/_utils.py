@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 
 def parse_proxmox_url(api_url: str) -> tuple[str, int]:
     """
@@ -12,9 +14,7 @@ def parse_proxmox_url(api_url: str) -> tuple[str, int]:
 
     Returns (host, port).
     """
-    url = api_url.replace("https://", "").replace("http://", "")
-    host_port = url.split("/")[0]
-    if ":" in host_port:
-        host, port_str = host_port.split(":", 1)
-        return host, int(port_str)
-    return host_port, 8006
+    if "://" not in api_url:
+        api_url = f"https://{api_url}"
+    parsed = urlparse(api_url)
+    return parsed.hostname or "localhost", parsed.port or 8006

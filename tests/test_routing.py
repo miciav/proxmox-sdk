@@ -151,7 +151,7 @@ def test_add_rules_idempotent() -> None:
     """Calling add_rules twice should not duplicate rules."""
     backend = make_backend()
     mgr = make_manager(backend)
-    first = mgr.add_rules(list(SAMPLE_MAPPINGS))
+    _first = mgr.add_rules(list(SAMPLE_MAPPINGS))
     second = mgr.add_rules(list(SAMPLE_MAPPINGS))
 
     content = backend.read_file("/etc/network/interfaces")

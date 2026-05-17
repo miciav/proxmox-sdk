@@ -177,27 +177,39 @@ class ProxmoxVM:
     # Command execution (QEMU guest agent)
     # ------------------------------------------------------------------
 
-    def exec(self, command: list[str]) -> CommandResult:
+    def exec(
+        self, command: list[str], *, timeout: float = 30.0
+    ) -> CommandResult:
         """Run a command inside the VM via QEMU guest agent."""
+        from proxmox_sdk.exceptions import ProxmoxAPIError
+
         result = self._backend.post(
             f"nodes/{self.node}/qemu/{self.vm_id}/agent/exec",
             command=command,
         )
-        # Proxmox returns a PID; poll for exit
         pid = result.get("pid", 0)
-        for _ in range(30):
+        deadline = time.monotonic() + timeout
+        interval = 0.5
+        while time.monotonic() < deadline:
             status = self._backend.get(
                 f"nodes/{self.node}/qemu/{self.vm_id}/agent/exec-status",
                 pid=pid,
             )
             if status.get("exited"):
                 return CommandResult(
-                    exit_code=int(status.get("exitcode", 0)),
+                    exit_code=int(status.get("exitcode", 1)),
                     stdout=status.get("out-data", ""),
                     stderr=status.get("err-data", ""),
                 )
-            time.sleep(1)
-        return CommandResult(exit_code=-1, stdout="", stderr="timeout")
+            if "error" in status:
+                raise ProxmoxAPIError(
+                    status_code=500,
+                    message=str(status.get("error", "guest agent error")),
+                    path=f"nodes/{self.node}/qemu/{self.vm_id}/agent/exec-status",
+                )
+            time.sleep(interval)
+            interval = min(interval * 1.5, 2.0)
+        raise ProxmoxTimeoutError(self.vm_id, "exec", timeout)
 
     # ------------------------------------------------------------------
     # Wait helpers

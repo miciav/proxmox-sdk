@@ -32,7 +32,7 @@ class VmInfo:
     tags: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_api(cls, data: dict) -> "VmInfo":
+    def from_api(cls, data: dict[str, Any]) -> "VmInfo":
         """Map from cluster.resources or nodes/{n}/qemu/{id}/status/current response."""
         tags_raw = data.get("tags", "") or ""
         tags = [t.strip() for t in tags_raw.split(";") if t.strip()]
@@ -64,7 +64,7 @@ class VmMetrics:
     disk_write_bytes: int
 
     @classmethod
-    def from_api(cls, data: dict) -> "VmMetrics":
+    def from_api(cls, data: dict[str, Any]) -> "VmMetrics":
         """Map from cluster.resources VM entry (same shape as app.py vm_metrics)."""
         maxmem = data.get("maxmem") or 0
         mem = data.get("mem") or 0
@@ -93,7 +93,7 @@ class NodeInfo:
     uptime_seconds: int
 
     @classmethod
-    def from_api(cls, data: dict) -> "NodeInfo":
+    def from_api(cls, data: dict[str, Any]) -> "NodeInfo":
         return cls(
             name=data.get("node", ""),
             status=data.get("status", "unknown"),
@@ -113,7 +113,7 @@ class SnapshotInfo:
     parent: str | None = None
 
     @classmethod
-    def from_api(cls, data: dict, vm_id: int = 0) -> "SnapshotInfo":
+    def from_api(cls, data: dict[str, Any], vm_id: int = 0) -> "SnapshotInfo":
         return cls(
             name=data.get("name", ""),
             vm_id=vm_id,
@@ -133,7 +133,7 @@ class TemplateInfo:
     memory_mb: int = 0
 
     @classmethod
-    def from_api(cls, data: dict) -> "TemplateInfo":
+    def from_api(cls, data: dict[str, Any]) -> "TemplateInfo":
         maxmem = data.get("maxmem") or 0
         return cls(
             vm_id=int(data.get("vmid", 0)),
@@ -154,7 +154,7 @@ class TaskInfo:
     exit_status: str | None
 
     @classmethod
-    def from_api(cls, data: dict) -> "TaskInfo":
+    def from_api(cls, data: dict[str, Any]) -> "TaskInfo":
         return cls(
             upid=data.get("upid", ""),
             node=data.get("node", ""),
