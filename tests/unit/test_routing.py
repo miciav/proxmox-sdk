@@ -7,7 +7,7 @@ The fake backend simulates the Proxmox host filesystem and command output.
 
 import pytest
 
-from proxmox_sdk.backends.ssh import FakeSshBackend
+from proxmox_sdk.testing import FakeSshBackend
 from proxmox_sdk.routing import PortMapping, ProxmoxRoutingManager
 
 # ---------------------------------------------------------------------------

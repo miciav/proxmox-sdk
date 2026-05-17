@@ -1,5 +1,6 @@
 import pytest
 
+from proxmox_sdk._backend import CommandResult
 from proxmox_sdk.models import (
     NodeInfo,
     SnapshotInfo,
@@ -7,7 +8,6 @@ from proxmox_sdk.models import (
     VmInfo,
     VmMetrics,
     VmState,
-    CommandResult,
 )
 
 

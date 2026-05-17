@@ -3,7 +3,7 @@
 import pytest
 
 from proxmox_sdk import ProxmoxClient
-from proxmox_sdk.backends.fake import FakeBackend
+from proxmox_sdk.testing import FakeBackend
 from proxmox_sdk.models import CloudInitConfig
 from proxmox_sdk.vm import ProxmoxVM
 
@@ -140,7 +140,7 @@ def test_create_vm_cloud_init_applied_before_start() -> None:
     client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
 
     cfg = CloudInitConfig(username="ubuntu")
-    client.create_vm("new-vm", template_id=9000, cloud_init_config=cfg, start=True)
+    client.launch("new-vm", template_id=9000, cloud_init_config=cfg, start=True)
 
     # Find the new VM id (not 9000)
     new_vm = next(v for v in fb._vms.values() if v["name"] == "new-vm")

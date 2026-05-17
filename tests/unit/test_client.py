@@ -31,13 +31,13 @@ def test_get_vm_raises_not_found(client: ProxmoxClient) -> None:
 
 
 def test_find_vm_by_name(client: ProxmoxClient) -> None:
-    vm = client.find_vm("stopped-vm")
+    vm = client.get_vm("stopped-vm")
     assert vm.vm_id == 100
 
 
 def test_find_vm_not_found(client: ProxmoxClient) -> None:
     with pytest.raises(VmNotFoundError) as exc_info:
-        client.find_vm("nonexistent")
+        client.get_vm("nonexistent")
     assert exc_info.value.identifier == "nonexistent"
 
 
@@ -106,7 +106,7 @@ def test_find_template_raises_if_not_found(
 def test_create_vm_calls_clone_then_start(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:
-    vm = client.create_vm("new-vm", template_id=9000, start=True)
+    vm = client.launch("new-vm", template_id=9000, start=True)
     assert vm.vm_id is not None
     # Should have called POST clone and POST start
     methods_paths = [(m, p) for m, p, _ in fake_backend.calls]
@@ -117,7 +117,7 @@ def test_create_vm_calls_clone_then_start(
 def test_create_vm_no_start(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:
-    client.create_vm("lazy-vm", template_id=9000, start=False)
+    client.launch("lazy-vm", template_id=9000, start=False)
     methods_paths = [(m, p) for m, p, _ in fake_backend.calls]
     assert not any("start" in p for _, p in methods_paths)
 
@@ -137,7 +137,7 @@ def test_from_url_parses_host_and_port() -> None:
 def test_purge_stopped(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:
-    client.purge_stopped()
+    client.purge()
     # VM 100 (stopped) and 9000 (template, stopped) should be deleted;
     # VM 101 (running) should remain
     remaining = client.list()
@@ -149,7 +149,7 @@ def test_create_vm_with_cloud_init_applies_config(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:
     cfg = CloudInitConfig(username="ubuntu", ip_config="ip=dhcp")
-    vm = client.create_vm("ci-vm", template_id=9000, cloud_init_config=cfg, start=False)
+    vm = client.launch("ci-vm", template_id=9000, cloud_init_config=cfg, start=False)
 
     fake_backend.assert_called_with("PUT", f"nodes/pve/qemu/{vm.vm_id}/config")
     stored = fake_backend.get(f"nodes/pve/qemu/{vm.vm_id}/config")
@@ -160,7 +160,7 @@ def test_create_vm_with_cloud_init_applies_config(
 def test_create_vm_without_cloud_init_does_not_call_config(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:
-    client.create_vm("plain-vm", template_id=9000, start=False)
+    client.launch("plain-vm", template_id=9000, start=False)
     calls = [(m, p) for m, p, _ in fake_backend.calls]
     assert not any(p.endswith("/config") for _, p in calls)
 
@@ -168,7 +168,7 @@ def test_create_vm_without_cloud_init_does_not_call_config(
 def test_create_vm_applies_cores_and_memory(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:
-    vm = client.create_vm("hw-vm", template_id=9000, cores=4, memory_mb=4096, start=False)
+    vm = client.launch("hw-vm", template_id=9000, cores=4, memory_mb=4096, start=False)
     stored = fake_backend.get(f"nodes/pve/qemu/{vm.vm_id}/config")
     assert stored["cores"] == 4
     assert stored["memory"] == 4096
@@ -177,14 +177,14 @@ def test_create_vm_applies_cores_and_memory(
 def test_create_vm_resizes_disk(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:
-    vm = client.create_vm("disk-vm", template_id=9000, disk_gb=50, start=False)
+    vm = client.launch("disk-vm", template_id=9000, disk_gb=50, start=False)
     fake_backend.assert_called_with("PUT", f"nodes/pve/qemu/{vm.vm_id}/resize")
 
 
 def test_create_vm_no_config_when_no_hw_params(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:
-    vm = client.create_vm("plain-vm", template_id=9000, start=False)
+    vm = client.launch("plain-vm", template_id=9000, start=False)
     # No PUT /config call should be made for hw (cloud_init is also None here)
     hw_config_calls = [
         (m, p) for m, p, _ in fake_backend.calls
