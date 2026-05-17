@@ -1,5 +1,7 @@
 # proxmox-sdk
 
+[![CI](https://github.com/miciav/proxmox-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/miciav/proxmox-sdk/actions/workflows/ci.yml)
+
 Python SDK per la gestione di VM Proxmox VE. Fornisce un'API ad alto livello sopra la REST API di Proxmox, con supporto per il testing tramite backend in-memory.
 
 ## Installazione
