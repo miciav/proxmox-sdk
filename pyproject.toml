@@ -1,6 +1,6 @@
 [project]
 name = "proxmox-sdk"
-version = "0.1.1"
+version = "0.2.0"
 description = "Pythonic SDK for Proxmox VE VM management"
 readme = "README.md"
 authors = [
@@ -41,7 +41,7 @@ line-length = 88
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["grimp", "import_linter", "paramiko", "proxmoxer"]
+module = ["grimp", "paramiko", "proxmoxer"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
