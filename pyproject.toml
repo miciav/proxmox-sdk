@@ -21,6 +21,12 @@ dev = [
     "ruff",
 ]
 
+[project.scripts]
+proxmox-quality = "proxmox_sdk.devtools.quality:main"
+proxmox-package-report = "proxmox_sdk.devtools.package_report:main"
+proxmox-eval = "proxmox_sdk.devtools.code_eval:main"
+proxmox-e2e = "proxmox_sdk.e2e:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -35,11 +41,15 @@ line-length = 88
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["proxmoxer", "paramiko"]
+module = ["grimp", "import_linter", "paramiko", "proxmoxer"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration tests (require real Proxmox server)",
+]
+addopts = "-m 'not integration'"
 
 [tool.coverage.report]
 fail_under = 75
@@ -49,6 +59,8 @@ source = ["src"]
 
 [dependency-groups]
 dev = [
+    "grimp>=3.14",
+    "import-linter>=2.11",
     "mypy>=1.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
