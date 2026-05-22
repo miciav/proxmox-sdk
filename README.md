@@ -2,367 +2,305 @@
 
 [![CI](https://github.com/miciav/proxmox-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/miciav/proxmox-sdk/actions/workflows/ci.yml)
 
-Python SDK per la gestione di VM Proxmox VE. Fornisce un'API ad alto livello sopra la REST API di Proxmox, con supporto per il testing tramite backend in-memory.
+`proxmox-sdk` e una libreria Python per gestire VM Proxmox VE con un'API piu alta livello sopra la REST API ufficiale. Include backend reali, fake in-memory per i test, supporto cloud-init, snapshot, guest agent e regole NAT via SSH.
 
 ## Installazione
 
 ```bash
 pip install proxmox-sdk
-# oppure con uv
-uv add proxmox-sdk
 ```
 
-Richiede `proxmoxer` e `requests` per il backend reale:
+Se lavori dal repository:
 
 ```bash
-pip install proxmoxer requests
+uv sync --dev
 ```
 
-## Connessione
+Per le operazioni SSH sul nodo Proxmox serve `paramiko`. Per l'uso reale della REST API servono `proxmoxer` e `requests`.
+
+## Uso rapido
 
 ```python
 from proxmox_sdk import ProxmoxClient
 
-# Con password
 client = ProxmoxClient(
     host="192.168.1.100",
     user="root@pam",
     password="secret",
-    node="pve",          # nodo di default (opzionale)
+    node="pve",
     verify_ssl=False,
 )
 
-# Con API token
+vms = client.list()
+vm = client.get_vm(100)
+vm.start()
+```
+
+## Connessione
+
+`ProxmoxClient` accetta password o token API. Puoi anche partire da un URL Proxmox completo.
+
+```python
+from proxmox_sdk import ProxmoxClient
+
 client = ProxmoxClient(
+    host="192.168.1.100",
+    user="root@pam",
+    password="secret",
+    node="pve",
+)
+
+token_client = ProxmoxClient(
     host="192.168.1.100",
     user="root@pam",
     token_name="mytoken",
     token_value="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
 )
 
-# Da URL completo
-client = ProxmoxClient.from_url(
+url_client = ProxmoxClient.from_url(
     "https://192.168.1.100:8006/api2/json",
     user="root@pam",
     password="secret",
 )
 ```
 
----
+## ProxmoxClient
 
-## ProxmoxClient — metodi disponibili
-
-### Query VM
+### Lettura
 
 ```python
-# Lista tutte le VM
-vms: list[VmInfo] = client.list()
-vms = client.list(node="pve")   # filtrate per nodo
+vms = client.list()
+vms_on_node = client.list(node="pve")
 
-# Recupera una VM per ID
-vm: ProxmoxVM = client.get_vm(100)
+vm = client.get_vm(100)
+vm_by_name = client.get_vm("node-1")
 
-# Cerca una VM per nome
-vm = client.get_vm("node-1")   # lancia VmNotFoundError se assente
+nodes = client.list_nodes()
+templates = client.list_templates()
+template = client.find_template("ubuntu-template")
 ```
 
-### Template
+### Creazione e riuso
+
+Il metodo principale e `launch()`. Accetta una stringa oppure un `VmConfig`.
 
 ```python
-# Lista tutti i template con info hardware
-templates: list[TemplateInfo] = client.list_templates()
-templates = client.list_templates(node="pve")
-
-# Cerca un template per nome
-t: TemplateInfo = client.find_template("ubuntu-22.04")
-# t.vm_id, t.name, t.node, t.cores, t.memory_mb, t.description
-
-# Lancia VmNotFoundError se non trovato
-```
-
-### Creazione VM
-
-```python
-from proxmox_sdk import CloudInitConfig
+from proxmox_sdk import CloudInitConfig, VmConfig
 
 vm = client.launch(
     "node-1",
-    template_id=9000,       # VMID del template da clonare (full clone)
-    node="pve",             # nodo di destinazione (default: primo disponibile)
-    cores=4,                # None = eredita dal template
-    memory_mb=4096,         # None = eredita dal template
-    disk_gb=50,             # None = eredita dal template
+    template_id=9000,
+    cores=4,
+    memory_mb=4096,
+    disk_gb=50,
     cloud_init_config=CloudInitConfig(
         username="ubuntu",
         password="secret",
         ssh_keys=["ssh-rsa AAAA..."],
         ip_config="ip=dhcp",
-        # ip_config="ip=10.0.0.5/24,gw=10.0.0.1"  # IP statico
         nameserver="8.8.8.8",
         searchdomain="home.local",
     ),
-    start=True,             # avvia la VM dopo la configurazione (default: True)
 )
-# Ordine garantito: clone → hw config → cloud-init → start
+
+vm2 = client.launch(VmConfig(
+    name="node-2",
+    template_id=9000,
+    cores=2,
+    memory_mb=2048,
+    start=False,
+))
 ```
 
-### Cleanup
+`launch_many()` crea piu VM in parallelo e fa rollback se una creazione fallisce.
 
 ```python
-# Elimina tutte le VM ferme (usa con cautela)
+configs = [
+    VmConfig(name="web", template_id=9000, cores=2, memory_mb=2048),
+    VmConfig(name="db", template_id=9000, cores=4, memory_mb=4096),
+]
+
+vms = client.launch_many(configs)
+```
+
+`ensure_running()` crea la VM se non esiste, oppure la avvia se e spenta.
+
+```python
+vm = client.ensure_running("node-3", template_id=9000, cores=2)
+```
+
+### Pulizia
+
+```python
 client.purge()
 client.purge(node="pve")
 ```
 
-### Nodi
+## ProxmoxVM
+
+`get_vm()` e `launch()` restituiscono un `ProxmoxVM`.
 
 ```python
-nodes: list[NodeInfo] = client.list_nodes()
-# n.name, n.status, n.cpu_count, n.memory_total_bytes, n.memory_used_bytes, n.uptime_seconds
-```
+vm.info()
+vm.metrics()
 
----
-
-## ProxmoxVM — metodi disponibili
-
-Restituito da `get_vm()`, `find_vm()`, `create_vm()`.
-
-### Stato e metriche
-
-```python
-info: VmInfo = vm.info()
-# info.vm_id, info.name, info.node, info.state (VmState), info.cpu_count,
-# info.memory_mb, info.uptime_seconds, info.tags
-
-metrics: VmMetrics = vm.metrics()
-# metrics.cpu_pct, metrics.mem_used_bytes, metrics.mem_total_bytes,
-# metrics.net_in_bytes, metrics.net_out_bytes, metrics.disk_read_bytes
-```
-
-### Ciclo di vita
-
-```python
 vm.start()
-vm.stop()                  # hard stop immediato
-vm.stop(force=True)        # forza l'arresto
-vm.shutdown()              # ACPI graceful shutdown
+vm.stop()
+vm.stop(force=True)
+vm.shutdown()
 vm.restart()
 vm.delete()
-vm.delete(purge=True)      # rimuove anche dai job config
+vm.delete(purge=True)
+
+vm.clone(new_vm_id=200, name="node-2", full=True)
+vm.snapshot("pre-upgrade", description="Prima dell'aggiornamento")
+vm.restore("pre-upgrade")
+vm.list_snapshots()
+
+vm.resize_disk("scsi0", "50G")
+vm.configure_cloud_init(CloudInitConfig(username="ubuntu", ip_config="ip=dhcp"))
 ```
 
-### Attesa
+Il guest agent supporta anche l'esecuzione di comandi:
 
 ```python
-vm.wait_for_agent(timeout=120)   # aspetta che il guest agent risponda
-vm.wait_for_ip(timeout=120)      # aspetta un indirizzo IPv4 dal guest agent
-vm.wait_ready(timeout=120)       # aspetta running + guest agent attivo
+result = vm.exec(["hostname"])
+print(result.exit_code)
+print(result.stdout)
+
+result2 = vm.exec_structured(["bash", "-lc", "echo hello"], cwd="/tmp")
 ```
 
-### Snapshot
+Helper di attesa:
 
 ```python
-snap: SnapshotInfo = vm.snapshot("pre-upgrade", description="Prima dell'aggiornamento")
-vm.restore("pre-upgrade")        # rollback allo snapshot
-snaps: list[SnapshotInfo] = vm.list_snapshots()
+vm.wait_for_agent(timeout=120)
+vm.wait_for_ip(timeout=120)
+vm.wait_ready(timeout=120)
 ```
 
-### Clone
+`transfer()` non implementa il trasferimento file via guest agent: richiede SSH e port forwarding NAT.
+
+## Modelli principali
+
+| Modello | Descrizione |
+|---|---|
+| `VmConfig` | Configurazione riusabile per `launch()` e `launch_many()` |
+| `CloudInitConfig` | Parametri cloud-init serializzati nella `PUT /config` di Proxmox |
+| `VmInfo` | Stato e configurazione della VM |
+| `VmMetrics` | Metriche runtime da `cluster/resources` |
+| `TemplateInfo` | VM template con metadati hardware |
+| `NodeInfo` | Informazioni sui nodi del cluster |
+| `SnapshotInfo` | Metadati di uno snapshot |
+| `CommandResult` | Risultato di un comando eseguito nel guest |
+| `PortMapping` | Regola NAT host -> VM |
+
+## NAT e port forwarding
+
+`ProxmoxRoutingManager` gestisce regole DNAT su un host Proxmox via SSH. Le regole vengono scritte in `/etc/network/interfaces` e ricaricate con `ifreload --all`.
 
 ```python
-new_vm: ProxmoxVM = vm.clone(new_vm_id=200, name="node-2", full=True)
-```
+from proxmox_sdk import PortMapping, ProxmoxRoutingManager
 
-### Disk
-
-```python
-vm.resize_disk("scsi0", "50G")    # dimensione assoluta
-vm.resize_disk("scsi0", "+10G")   # incremento relativo
-```
-
-### Cloud-init (post-clone)
-
-```python
-vm.configure_cloud_init(CloudInitConfig(
-    username="ubuntu",
-    ssh_keys=["ssh-rsa AAAA..."],
-    ip_config="ip=dhcp",
-))
-```
-
-### Esecuzione comandi (guest agent)
-
-```python
-result: CommandResult = vm.exec(["hostname"])
-result.exit_code   # int
-result.stdout      # str
-result.stderr      # str
-result.success     # bool
-```
-
----
-
-## NAT / Port Forwarding — ProxmoxRoutingManager
-
-Gestisce regole iptables DNAT sull'host Proxmox tramite SSH. Equivalente agli Ansible playbook `add_nat_rules.yml` / `remove_nat_rules.yml`.
-
-```python
-from proxmox_sdk import ProxmoxRoutingManager, PortMapping
-
-# Connessione SSH all'host Proxmox
 mgr = ProxmoxRoutingManager.from_key(
     host="192.168.1.100",
     user="root",
     ssh_key_path="~/.ssh/id_rsa",
 )
-# oppure con password:
-mgr = ProxmoxRoutingManager.from_password(
-    host="192.168.1.100",
-    user="root",
-    password="secret",
-)
 
-# Aggiunge regole (le porte host vengono assegnate automaticamente)
 mappings = [
     PortMapping(vm_id=100, vm_name="node-1", vm_ip="10.0.0.10", vm_port=22, service="SSH"),
     PortMapping(vm_id=100, vm_name="node-1", vm_ip="10.0.0.10", vm_port=6443, service="k3s"),
 ]
-assigned: list[PortMapping] = mgr.add_rules(mappings)
-for m in assigned:
-    print(f"{m.service}: host:{m.host_port} -> {m.vm_ip}:{m.vm_port}")
 
-# Lista le regole attive
-rules: list[PortMapping] = mgr.list_rules()
-
-# Rimuove regole specifiche
+assigned = mgr.add_rules(mappings)
+rules = mgr.list_rules()
 mgr.remove_rules(assigned)
-
-# Rimuove tutte le regole gestite dalla libreria
 mgr.flush_rules()
 ```
 
-Le porte host vengono scelte automaticamente evitando quelle già in uso (rilevate via `ss -tln`).
+Le porte host vengono assegnate automaticamente evitando quelle gia occupate da `ss -tln` e quelle gia presenti nel file di configurazione.
 
----
+## CLI
 
-## End-to-End Test — `proxmox-vm-e2e`
+### `proxmox-vm-e2e`
 
-Programma CLI per testare il ciclo di vita completo di una VM: creazione, verifica (guest agent, IP, esecuzione comando), eliminazione. Equivalente a `azure-vm-e2e`.
+Verifica il ciclo di vita completo di una VM: creazione, readiness, esecuzione di un comando e cleanup.
 
 ```bash
-# Singola VM
 PROXMOX_HOST=192.168.1.100 PROXMOX_USER=root@pam \
 PROXMOX_PASSWORD=secret PROXMOX_NODE=pve \
-  uv run proxmox-vm-e2e --name test-vm --template-id 9000 --cores 2 --memory-mb 2048
-
-# 3 VM in parallelo
-  uv run proxmox-vm-e2e --count 3 --template-id 9000
-
-# Con JSON array per configurazioni eterogenee
-  uv run proxmox-vm-e2e --configs '[{"name":"web","template_id":9000,"cores":2},{"name":"db","template_id":9000,"cores":4}]'
-
-# Elenca i template disponibili
-  uv run proxmox-vm-e2e --list-templates
+uv run proxmox-vm-e2e --name test-vm --template-id 9000 --cores 2 --memory-mb 2048
 ```
 
-### Variabili d'ambiente
+Opzioni utili:
 
-| Variabile | Obbligatoria | Descrizione |
-|---|---|---|
-| `PROXMOX_HOST` | sì | IP o hostname del server Proxmox |
-| `PROXMOX_USER` | sì | Utente (es. `root@pam`) |
-| `PROXMOX_PASSWORD` | no | Password (in alternativa al token) |
-| `PROXMOX_TOKEN_NAME` | no | Nome del token API |
-| `PROXMOX_TOKEN_VALUE` | no | Valore del token API |
-| `PROXMOX_NODE` | no | Nodo di default (o `--node`) |
-
-### Output di esempio
-
-```
-[1/3] Launching VM 'test-vm' ...
-       launch completed in 12.3s
-[2/3] Verifying 1 VM(s) ...
-  [1/1] 104: waiting for guest agent ...
-  [1/1] 104: agent ready in 8.2s
-  [1/1] 104: waiting for IP ...
-  [1/1] 104: got IP 10.0.0.105 in 2.1s
-  [1/1] 104: running verification command ...
-  [1/1] 104: exit=0  stdout=test-vm
-  [1/1] 104: state=running  node=pve  cores=2  mem=2048MB
-[3/3] Deleting VM '104' ...
-       done.
-
-SUCCESS — 1 VM(s) completed full lifecycle.
+```bash
+uv run proxmox-vm-e2e --count 3 --template-id 9000
+uv run proxmox-vm-e2e --configs '[{"name":"web","template_id":9000,"cores":2}]'
+uv run proxmox-vm-e2e --list-templates
 ```
 
----
+Variabili d'ambiente:
 
-## Modelli dati
-
-| Classe | Campi principali |
+| Variabile | Descrizione |
 |---|---|
-| `VmConfig` | `name`, `template_id`, `node`, `cores`, `memory_mb`, `disk_gb`, `cloud_init_config`, `start` |
-| `VmInfo` | `vm_id`, `name`, `node`, `state` (VmState), `cpu_count`, `memory_mb`, `uptime_seconds`, `tags`, `template` |
-| `VmMetrics` | `vm_id`, `cpu_pct`, `mem_used_bytes`, `mem_total_bytes`, `net_in_bytes`, `net_out_bytes` |
-| `VmState` | enum: `RUNNING`, `STOPPED`, `PAUSED`, `SUSPENDED`, `UNKNOWN` |
-| `TemplateInfo` | `vm_id`, `name`, `node`, `cores`, `memory_mb`, `description` |
-| `NodeInfo` | `name`, `status`, `cpu_count`, `memory_total_bytes`, `memory_used_bytes`, `uptime_seconds` |
-| `SnapshotInfo` | `name`, `vm_id`, `created`, `description`, `parent` |
-| `CloudInitConfig` | `username`, `password`, `ssh_keys`, `ip_config`, `nameserver`, `searchdomain` |
-| `CommandResult` | `exit_code`, `stdout`, `stderr`, `args`, `success` |
-| `PortMapping` | `vm_id`, `vm_name`, `vm_ip`, `vm_port`, `host_port`, `service` |
+| `PROXMOX_HOST` | Host o IP del server Proxmox |
+| `PROXMOX_USER` | Utente Proxmox, per esempio `root@pam` |
+| `PROXMOX_PASSWORD` | Password, alternativa ai token |
+| `PROXMOX_TOKEN_NAME` | Nome del token API |
+| `PROXMOX_TOKEN_VALUE` | Valore del token API |
+| `PROXMOX_NODE` | Nodo di default, oppure `--node` |
 
----
+### Devtools
 
-## Eccezioni
+Lo script package espone anche alcuni comandi di manutenzione:
 
-Tutte derivano da `ProxmoxError`.
+```bash
+uv run proxmox-quality
+uv run proxmox-package-report
+uv run proxmox-eval
+```
 
-| Eccezione | Quando |
-|---|---|
-| `ProxmoxAuthError` | Autenticazione fallita |
-| `ProxmoxConnectionError` | Host non raggiungibile |
-| `ProxmoxAPIError` | La REST API restituisce un errore |
-| `VmNotFoundError` | VM o template non trovato per ID o nome |
-| `VmStateError` | Operazione non valida per lo stato attuale della VM |
-| `NodeNotFoundError` | Nodo non trovato nel cluster |
-| `ProxmoxTimeoutError` | Un'operazione di attesa ha superato il timeout |
-| `SnapshotNotFoundError` | Snapshot non trovato sulla VM |
-| `TaskFailedError` | Un task asincrono Proxmox è terminato con errore |
+## Testing
 
----
-
-## Testing con FakeBackend
-
-Tutti i test della libreria usano `FakeBackend` — uno state machine in-memory che non richiede un server Proxmox reale.
+I test unitari usano `FakeBackend` e `FakeSshBackend`, quindi non serve un cluster Proxmox reale.
 
 ```python
-from proxmox_sdk import ProxmoxClient, FakeBackend
+from proxmox_sdk import FakeBackend, FakeSshBackend, ProxmoxClient, ProxmoxRoutingManager
 
 fb = FakeBackend()
-fb.add_vm(9000, node="pve", name="ubuntu-22.04", status="stopped", template=True)
-fb.add_vm(100,  node="pve", name="node-1", status="running")
+fb.add_vm(9000, node="pve", name="ubuntu-template", status="stopped", template=True)
+fb.add_vm(100, node="pve", name="node-1", status="running")
 
 client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
-
-# Usa il client normalmente nei test
-vm = client.launch("test-vm", template_id=9000, cores=2, start=False)
-assert vm.vm_id is not None
-
-# Ispezione diretta dello stato interno
-fb.assert_called_with("PUT", f"nodes/pve/qemu/{vm.vm_id}/config")
-stored = fb.get(f"nodes/pve/qemu/{vm.vm_id}/config")
-assert stored["cores"] == 2
-```
-
-Per il testing SSH (routing NAT) usa `FakeSshBackend`:
-
-```python
-from proxmox_sdk import FakeSshBackend, ProxmoxRoutingManager
+vm = client.launch("test-vm", template_id=9000, start=False)
 
 ssh = FakeSshBackend()
 ssh.seed_file("/etc/network/interfaces", "auto lo\niface lo inet loopback\n")
-ssh.seed_response("ss -tln", (0, "Netid  State  Recv-Q  Send-Q  Local Address:Port\n", ""))
+ssh.seed_response("ss -tln", 0, "State  Recv-Q  Send-Q  Local Address:Port\nLISTEN 0 128 *:22\n")
 
-mgr = ProxmoxRoutingManager(ssh_backend=ssh, interface="eth0")
+mgr = ProxmoxRoutingManager(
+    ssh,
+    interfaces_file="/etc/network/interfaces",
+    external_iface="vmbr0",
+    internal_iface="vmbr1",
+)
 ```
+
+`FakeBackend` registra le chiamate in `calls` e offre `assert_called_with()`. `FakeSshBackend` espone `seed_file()`, `seed_response()` e `assert_ran()`.
+
+## Eccezioni
+
+Tutte le eccezioni pubbliche derivano da `ProxmoxError`.
+
+- `ProxmoxAuthError`
+- `ProxmoxConnectionError`
+- `ProxmoxAPIError`
+- `VmNotFoundError`
+- `VmStateError`
+- `NodeNotFoundError`
+- `ProxmoxTimeoutError`
+- `SnapshotNotFoundError`
+- `TaskFailedError`
+
