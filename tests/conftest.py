@@ -27,13 +27,14 @@ def fake_backend() -> FakeBackend:
         cpu=0.05,
         uptime=3600,
     )
-    # Template VM
+    # Template VM (with cloud-init drive, as a properly configured template would have)
     backend.add_vm(
         9000,
         node="pve",
         name="ubuntu-template",
         status="stopped",
         template=True,
+        ide2="local-lvm:vm-9000-cloudinit,media=cdrom",
     )
     return backend
 

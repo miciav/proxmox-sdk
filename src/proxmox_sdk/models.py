@@ -42,7 +42,12 @@ class VmInfo:
             name=data.get("name", ""),
             node=data.get("node", ""),
             state=VmState(data.get("status", "unknown")),
-            cpu_count=int(data.get("cpus", data.get("cpu_count", 1))),
+            cpu_count=int(
+                data.get(
+                    "cores",
+                    data.get("maxcpu", data.get("cpus", data.get("cpu_count", 1))),
+                )
+            ),
             memory_mb=maxmem // (1024 * 1024) if maxmem else 0,
             uptime_seconds=int(data.get("uptime", 0)),
             ipv4=[],

@@ -136,7 +136,10 @@ def test_configure_cloud_init_noop_on_empty_config(
 def test_create_vm_cloud_init_applied_before_start() -> None:
     """cloud-init config must be applied before VM is started."""
     fb = FakeBackend()
-    fb.add_vm(9000, node="pve", name="template", status="stopped", template=True)
+    fb.add_vm(
+        9000, node="pve", name="template", status="stopped", template=True,
+        ide2="local-lvm:vm-9000-cloudinit,media=cdrom",
+    )
     client = ProxmoxClient(host="x", user="x", node="pve", backend=fb)
 
     cfg = CloudInitConfig(username="ubuntu")

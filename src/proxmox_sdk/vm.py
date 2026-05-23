@@ -75,11 +75,10 @@ class ProxmoxVM:
         )
         self._backend.wait_for_task(self.node, upid)
 
-    def stop(self, *, force: bool = False, timeout: int = 30) -> None:
+    def stop(self, *, timeout: int = 30) -> None:
         """Hard-stop the VM (immediate power off)."""
         upid = self._backend.post(
             f"nodes/{self.node}/qemu/{self.vm_id}/status/stop",
-            **({} if not force else {"forceStop": 1}),
         )
         self._backend.wait_for_task(self.node, upid, timeout=timeout)
 
@@ -310,6 +309,11 @@ class ProxmoxVM:
             disk=disk,
             size=size,
         )
+
+    def has_cloud_init_drive(self) -> bool:
+        """Return True if the VM config contains a cloud-init CD-ROM drive."""
+        config = self._backend.get(f"nodes/{self.node}/qemu/{self.vm_id}/config")
+        return any("cloudinit" in str(v).lower() for v in config.values() if isinstance(v, str))
 
     def configure_cloud_init(self, config: CloudInitConfig) -> None:
         """

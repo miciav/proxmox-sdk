@@ -174,6 +174,27 @@ def test_create_vm_applies_cores_and_memory(
     assert stored["memory"] == 4096
 
 
+def test_create_vm_info_reports_configured_cores(
+    client: ProxmoxClient, fake_backend: FakeBackend
+) -> None:
+    vm = client.launch("info-vm", template_id=9000, cores=2, start=False)
+    assert vm.info().cpu_count == 2
+
+
+def test_create_vm_uses_long_task_timeout(
+    client: ProxmoxClient, fake_backend: FakeBackend
+) -> None:
+    seen_timeouts: list[float] = []
+
+    def wait_for_task(node: str, upid: str, timeout: float = 60) -> None:
+        seen_timeouts.append(timeout)
+
+    fake_backend.wait_for_task = wait_for_task  # type: ignore[method-assign]
+
+    client.launch("timeout-vm", template_id=9000, start=False)
+    assert seen_timeouts == [300.0]
+
+
 def test_create_vm_resizes_disk(
     client: ProxmoxClient, fake_backend: FakeBackend
 ) -> None:

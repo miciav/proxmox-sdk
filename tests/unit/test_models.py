@@ -52,6 +52,23 @@ def test_vm_info_from_api_maps_fields() -> None:
     assert info.template is False
 
 
+def test_vm_info_from_api_prefers_configured_cpu_count() -> None:
+    raw = {
+        "vmid": 100,
+        "name": "my-vm",
+        "node": "pve",
+        "status": "running",
+        "cores": 2,
+        "maxcpu": 8,
+        "cpus": 4,
+        "maxmem": 4 * 1024 * 1024 * 1024,
+        "uptime": 7200,
+        "template": False,
+    }
+    info = VmInfo.from_api(raw)
+    assert info.cpu_count == 2
+
+
 def test_vm_info_tags_parsed() -> None:
     raw = {
         "vmid": 1,

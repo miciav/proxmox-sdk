@@ -6,7 +6,7 @@ from typing import Any, List
 
 from proxmox_sdk._backend import ProxmoxBackend
 from proxmox_sdk._utils import parse_proxmox_url
-from proxmox_sdk.exceptions import VmNotFoundError
+from proxmox_sdk.exceptions import ProxmoxError, VmNotFoundError
 from proxmox_sdk.models import CloudInitConfig, NodeInfo, TemplateInfo, VmConfig, VmInfo
 from proxmox_sdk.vm import ProxmoxVM
 
@@ -108,6 +108,7 @@ class ProxmoxClient:
         disk_gb: int | None = None,
         cloud_init_config: CloudInitConfig | None = None,
         start: bool = True,
+        timeout: float = 300.0,
     ) -> ProxmoxVM:
         """Clone a template VM, optionally apply cloud-init, and start it.
 
@@ -138,11 +139,20 @@ class ProxmoxClient:
         target_node = cfg.node or node or self._default_node()
         new_vmid = self._next_vmid()
 
+        if cfg.cloud_init_config is not None:
+            template = ProxmoxVM(tid, target_node, self._backend)
+            if not template.has_cloud_init_drive():
+                raise ProxmoxError(
+                    f"Template {tid} has no cloud-init drive. "
+                    "Attach a cloud-init CD-ROM to the template in Proxmox before "
+                    "using cloud_init_config."
+                )
+
         upid = self._backend.post(
             f"nodes/{target_node}/qemu/{tid}/clone",
             newid=new_vmid, name=name, target=target_node, full=1,
         )
-        self._backend.wait_for_task(target_node, upid)
+        self._backend.wait_for_task(target_node, upid, timeout=timeout)
 
         vm = ProxmoxVM(new_vmid, target_node, self._backend)
 
@@ -151,6 +161,7 @@ class ProxmoxClient:
             hw_params["cores"] = cfg.cores
         if cfg.memory_mb is not None:
             hw_params["memory"] = cfg.memory_mb
+            hw_params["balloon"] = 0
         if hw_params:
             self._backend.put(f"nodes/{target_node}/qemu/{new_vmid}/config", **hw_params)
         if cfg.disk_gb is not None:
@@ -169,7 +180,11 @@ class ProxmoxClient:
     # ------------------------------------------------------------------
 
     def launch_many(
-        self, configs: list[VmConfig], *, max_workers: int | None = None,
+        self,
+        configs: list[VmConfig],
+        *,
+        max_workers: int | None = None,
+        timeout: float = 300.0,
     ) -> list[ProxmoxVM]:
         """Launch multiple VMs in parallel. Rolls back all on any failure."""
         if not configs:
@@ -182,7 +197,7 @@ class ProxmoxClient:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {}
             for cfg in configs:
-                futures[executor.submit(self.launch, cfg)] = cfg
+                futures[executor.submit(self.launch, cfg, timeout=timeout)] = cfg
 
             for fut in as_completed(futures):
                 if first_error is not None:
@@ -220,6 +235,7 @@ class ProxmoxClient:
         memory_mb: int | None = None,
         disk_gb: int | None = None,
         cloud_init_config: CloudInitConfig | None = None,
+        timeout: float = 300.0,
     ) -> ProxmoxVM:
         """Ensure a VM exists and is running. Creates it if missing, starts if stopped."""
         try:
@@ -234,6 +250,7 @@ class ProxmoxClient:
                 name, template_id, node=node, cores=cores,
                 memory_mb=memory_mb, disk_gb=disk_gb,
                 cloud_init_config=cloud_init_config, start=True,
+                timeout=timeout,
             )
 
     # ------------------------------------------------------------------
